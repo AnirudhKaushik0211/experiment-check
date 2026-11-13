@@ -1,0 +1,494 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' file:; style-src 'self' file:; img-src 'self' data: file:; connect-src 'none'; font-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ExperimentCheck - plan and audit A/B tests</title>
+<link rel="stylesheet" href="css/app.css">
+<script src="js/stats.js" defer></script>
+<script src="js/format.js" defer></script>
+<script src="js/validate.js" defer></script>
+<script src="js/plan.js" defer></script>
+<script src="js/readout.js" defer></script>
+<script src="js/memo.js" defer></script>
+<script src="js/scenarios.js" defer></script>
+<script src="js/state.js" defer></script>
+<script src="js/ui.js" defer></script>
+</head>
+<body>
+<a id="ec-skip" class="ec-skip" href="#ec-main">Skip to content</a>
+
+<header id="ec-header">
+  <div class="ec-brand">
+    <h1 id="ec-title">ExperimentCheck</h1>
+    <p id="ec-tagline">Plan, pre-register and audit A/B tests. Runs in your browser; nothing is uploaded.</p>
+  </div>
+  <div class="ec-header-actions">
+    <label for="ec-example-select">Load example</label>
+    <select id="ec-example-select"></select>
+    <button type="button" id="ec-example-load">Load</button>
+    <button type="button" id="ec-reset">Reset</button>
+  </div>
+</header>
+
+<div id="ec-status" role="status" aria-live="polite"><span id="ec-status-msg"></span> <button type="button" id="ec-undo" hidden>Undo</button></div>
+
+<div id="ec-newhere" hidden>
+  <p id="ec-newhere-text">New here? The Guide explains every number.</p>
+  <button type="button" id="ec-newhere-open">Open the Guide</button>
+  <button type="button" id="ec-newhere-dismiss">Dismiss</button>
+</div>
+
+<div id="ec-tablist" role="tablist" aria-label="Sections">
+  <button type="button" role="tab" id="ec-tab-guide" aria-selected="false" aria-controls="ec-panel-guide" tabindex="-1">Guide</button>
+  <button type="button" role="tab" id="ec-tab-plan" aria-selected="true" aria-controls="ec-panel-plan" tabindex="0">Plan</button>
+  <button type="button" role="tab" id="ec-tab-readout" aria-selected="false" aria-controls="ec-panel-readout" tabindex="-1">Readout</button>
+</div>
+
+<main id="ec-main" tabindex="-1">
+
+<!-- ======================================================================= Guide -->
+<section id="ec-panel-guide" role="tabpanel" aria-labelledby="ec-tab-guide" hidden>
+  <h2 id="ec-guide-heading">Guide</h2>
+
+  <h3 id="ec-guide-what">What this does</h3>
+  <p>ExperimentCheck helps you plan an A/B test before it starts: how many users you need, how long to run it and what the test can detect. After the test, it audits the observed numbers with standard checks such as the sample ratio, timing and guardrails. It then gives a documented verdict and writes a pre-registration and a decision memo you can share.</p>
+  <p><button type="button" id="ec-guide-start" class="ec-guide-start ec-primary">Start planning</button></p>
+
+  <h3 id="ec-guide-quick">Quick start</h3>
+  <ol>
+    <li>Plan: enter the baseline, the minimum detectable effect, alpha, power, the split and your daily traffic.</li>
+    <li>Pre-register: copy or download the pre-registration and agree on it before the test starts.</li>
+    <li>Share: copy the share link at the bottom of the page. It holds all your inputs.</li>
+    <li>Read out: after the planned end date, enter the observed users, conversions or means, and the guardrail numbers.</li>
+    <li>Decide: read the verdict and the checks, then copy, download or print the decision memo.</li>
+  </ol>
+
+  <h3 id="ec-guide-examples">Try an example</h3>
+  <ul class="ec-example-list">
+    <li><button type="button" id="ec-guide-ex-clean-win" data-example="clean-win">Clean win</button> Significant lift above the MDE, clean checks.</li>
+    <li><button type="button" id="ec-guide-ex-flat" data-example="flat">Flat / inconclusive</button> Ran to plan, not significant, and the interval still includes the MDE.</li>
+    <li><button type="button" id="ec-guide-ex-srm" data-example="srm">Sample ratio mismatch</button> Treatment has 900 fewer users than control under a 50/50 split.</li>
+    <li><button type="button" id="ec-guide-ex-peeking" data-example="peeking">Peeking too early</button> Analysed on day 5 of 14 after three looks.</li>
+    <li><button type="button" id="ec-guide-ex-trivial" data-example="trivial">Significant but trivial</button> Huge sample, significant, but the whole interval is below the MDE.</li>
+    <li><button type="button" id="ec-guide-ex-guardrail-breach" data-example="guardrail-breach">Guardrail breach</button> Conversion is up, but refunds rose by more than the limit.</li>
+  </ul>
+
+  <h3 id="ec-guide-verdict">How to read the verdict</h3>
+  <p>The verdict follows a fixed rule, checked in this order. The first rule that applies decides.</p>
+  <ol>
+    <li>Investigate (SRM): the traffic split does not match the plan. Every metric is suspect until you find the cause.</li>
+    <li>Don't ship: a guardrail got worse by more than its pre-registered limit, however good the primary metric looks.</li>
+    <li>Inconclusive - extend: the data end before the planned end date. Early looks inflate false positives, so the result is not final.</li>
+    <li>Otherwise the primary metric decides. Ship when it improved significantly and by at least the MDE. Don't ship when it got significantly worse, when the whole interval is below the MDE, or when the interval rules out an improvement as large as the MDE. In every other case the result is inconclusive: extend the test or re-plan.</li>
+  </ol>
+  <div class="ec-scroll">
+    <table id="ec-guide-status-table">
+      <caption>Check statuses</caption>
+      <thead><tr><th scope="col">Status</th><th scope="col">Meaning</th></tr></thead>
+      <tbody>
+        <tr><td class="ec-st-PASS">PASS</td><td>The check is fine.</td></tr>
+        <tr><td class="ec-st-WARN">WARN</td><td>Something weakens the result. Read the detail before you decide.</td></tr>
+        <tr><td class="ec-st-FAIL">FAIL</td><td>The check failed. It decides the verdict or is listed as a reason.</td></tr>
+        <tr><td class="ec-st-INFO">INFO</td><td>Information only. It never changes the verdict by itself.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3 id="ec-guide-glossary">Glossary</h3>
+  <dl id="ec-glossary">
+    <dt id="ec-g-ab-test" tabindex="-1">A/B test</dt>
+    <dd>A randomised experiment that shows one version (control) to some users and a changed version (treatment) to others, then compares a metric between the two groups.</dd>
+    <dt id="ec-g-arms" tabindex="-1">Control and treatment</dt>
+    <dd>The two groups, or arms, of the test. Control sees the current experience; treatment sees the change.</dd>
+    <dt id="ec-g-baseline" tabindex="-1">Baseline</dt>
+    <dd>The value of the metric today, without the change. The plan uses it to work out the sample size.</dd>
+    <dt id="ec-g-conversion" tabindex="-1">Conversion rate</dt>
+    <dd>The share of users who did the thing you measure, such as buying or signing up. 1,540 conversions out of 15,400 users is a 10.00% rate.</dd>
+    <dt id="ec-g-mde" tabindex="-1">Minimum detectable effect, MDE</dt>
+    <dd>The smallest change worth detecting. The test is sized so that a true effect of this size is found with the chosen power. It is also the bar an effect must clear to count as meaningful.</dd>
+    <dt id="ec-g-abs-rel" tabindex="-1">Absolute vs relative effect, pp</dt>
+    <dd>An absolute effect is the plain difference, in percentage points (pp) for rates. A relative effect is that difference divided by the baseline. From 10% to 11% is +1 pp absolute and +10% relative.</dd>
+    <dt id="ec-g-alpha" tabindex="-1">Significance level, alpha</dt>
+    <dd>The false-positive rate you accept: the chance of calling an effect significant when there is none. 5% is common.</dd>
+    <dt id="ec-g-power" tabindex="-1">Power</dt>
+    <dd>The chance that the test finds a true effect as large as the MDE. 80% is common. A test with fewer users than planned has less power.</dd>
+    <dt id="ec-g-sides" tabindex="-1">One- vs two-sided test</dt>
+    <dd>A two-sided test looks for a change in either direction. A one-sided test only looks for an improvement, so it needs fewer users but can't show harm.</dd>
+    <dt id="ec-g-p-value" tabindex="-1">p-value</dt>
+    <dd>How surprising the observed difference would be if the change had no effect. A p-value below alpha is called significant. It is not the chance that the change works.</dd>
+    <dt id="ec-g-ci" tabindex="-1">Confidence interval</dt>
+    <dd>A range of effects that fit the data. A 95% interval built this way contains the true effect in about 95% of tests. If the whole interval is below zero, the change is harmful.</dd>
+    <dt id="ec-g-practical" tabindex="-1">Practical significance</dt>
+    <dd>Whether an effect is large enough to matter. Here that means at least the MDE. An effect can be statistically significant and still too small to be worth shipping.</dd>
+    <dt id="ec-g-srm" tabindex="-1">Sample ratio mismatch, SRM</dt>
+    <dd>The arms received a different share of users than planned. It usually means a bug in assignment or logging, and it makes every metric untrustworthy.</dd>
+    <dt id="ec-g-peeking" tabindex="-1">Peeking</dt>
+    <dd>Looking at results before the planned end and being ready to stop on a good number. Each extra look raises the real false-positive rate above alpha.</dd>
+    <dt id="ec-g-obf" tabindex="-1">Alpha spending / O'Brien-Fleming</dt>
+    <dd>A way to plan interim looks in advance by spending a small part of alpha early and most of it at the end. The figure shown here is informational only.</dd>
+    <dt id="ec-g-guardrail" tabindex="-1">Guardrail metric</dt>
+    <dd>A metric that must not get worse, such as refunds or page load time. A guardrail breach blocks shipping even when the primary metric improves.</dd>
+    <dt id="ec-g-margin" tabindex="-1">Maximum acceptable degradation</dt>
+    <dd>How much worse a guardrail may get, in percent of its control value, before the change is blocked.</dd>
+    <dt id="ec-g-novelty" tabindex="-1">Novelty and day-of-week effects</dt>
+    <dd>Users react to anything new at first, and behaviour differs by weekday. Running whole weeks, and at least one week, reduces both.</dd>
+    <dt id="ec-g-prereg" tabindex="-1">Pre-registration</dt>
+    <dd>Writing down the hypothesis, metric, sample, duration and decision rule before the test starts, so the analysis can't be bent to fit the result.</dd>
+    <dt id="ec-g-z-test" tabindex="-1">Two-proportion z-test</dt>
+    <dd>The standard test for comparing two conversion rates. It uses a normal approximation, which is unreliable with fewer than about 10 events or non-events in an arm.</dd>
+    <dt id="ec-g-welch" tabindex="-1">Welch's t-test</dt>
+    <dd>A test for comparing two means that does not assume equal variances. It relies on the sample means being roughly normal, which needs enough users per arm.</dd>
+    <dt id="ec-g-chi-square" tabindex="-1">Chi-square goodness-of-fit</dt>
+    <dd>A test of whether observed counts match expected shares. Here it checks the traffic split for a sample ratio mismatch.</dd>
+  </dl>
+
+  <h3 id="ec-guide-limits">Assumptions and limitations</h3>
+  <ul>
+    <li>Users are randomised independently, the analysis unit equals the randomisation unit, and each user is counted once.</li>
+    <li>Normal approximations: z-test, Wald CI and Katz log CI (binary); delta-method relative CI (continuous); normal-approximation sample size. They are unreliable with small counts, and the tool warns.</li>
+    <li>Welch's t-test assumes approximately normal sample means (central limit theorem). Heavily skewed metrics (revenue) may need more data or a transformation.</li>
+    <li>One treatment vs one control. No correction for multiple metrics or multiple guardrails.</li>
+    <li>No valid sequential testing: peeking is only warned about. The O'Brien-Fleming figure is informational.</li>
+    <li>The verdict is a documented rule, not a substitute for judgement about costs, risks and strategy.</li>
+    <li>Daily traffic is assumed constant. Returning users make the real duration longer.</li>
+  </ul>
+
+  <h3 id="ec-guide-privacy">Privacy</h3>
+  <ul>
+    <li>No network requests (blocked by a Content Security Policy and checked by automated tests).</li>
+    <li>Nothing is uploaded. All numbers are computed in your browser.</li>
+    <li>The share link contains your inputs. Browsers never send the part after # to a server, but anyone with the link can read the inputs, so share it only where they may be seen.</li>
+    <li>localStorage holds only one flag: whether you have seen the Guide.</li>
+  </ul>
+
+  <h3 id="ec-guide-refs">References</h3>
+  <ul class="ec-refs">
+    <li>Fleiss, J. L., Levin, B. and Paik, M. C. (2003). Statistical Methods for Rates and Proportions, 3rd ed. Wiley. Chapter 4: sample size for two independent proportions, without continuity correction.</li>
+    <li>Chow, S.-C., Shao, J. and Wang, H. (2008). Sample Size Calculations in Clinical Research, 2nd ed. Chapman &amp; Hall/CRC. Two-sample means, section 3.2.</li>
+    <li>Welch, B. L. (1947). The generalization of "Student's" problem when several different population variances are involved. Biometrika 34, 28-35.</li>
+    <li>Satterthwaite, F. E. (1946). An approximate distribution of estimates of variance components. Biometrics Bulletin 2, 110-114.</li>
+    <li>Katz, D., Baptista, J., Azen, S. P. and Pike, M. C. (1978). Obtaining confidence intervals for the risk ratio in cohort studies. Biometrics 34, 469-474.</li>
+    <li>Agresti, A. (2013). Categorical Data Analysis, 3rd ed. Wiley. Two-proportion z-test, Wald interval, chi-square goodness-of-fit.</li>
+    <li>Kohavi, R., Tang, D. and Xu, Y. (2020). Trustworthy Online Controlled Experiments: A Practical Guide to A/B Testing. Cambridge University Press. Chapter 2 (end-to-end example: statistical vs practical significance and launch decisions), chapter 21 (sample ratio mismatch and other trust checks).</li>
+    <li>Fabijan, A., Gupchup, J., Gupta, S., Omhover, J., Qin, W., Vermeer, L. and Dmitriev, P. (2019). Diagnosing sample ratio mismatch in online controlled experiments. Proceedings of KDD 2019.</li>
+    <li>Armitage, P., McPherson, C. K. and Rowe, B. C. (1969). Repeated significance tests on accumulating data. Journal of the Royal Statistical Society A 132, 235-244.</li>
+    <li>Jennison, C. and Turnbull, B. W. (2000). Group Sequential Methods with Applications to Clinical Trials. Chapman &amp; Hall/CRC. Table 1.1.</li>
+    <li>O'Brien, P. C. and Fleming, T. R. (1979). A multiple testing procedure for clinical trials. Biometrics 35, 549-556.</li>
+    <li>Lan, K. K. G. and DeMets, D. L. (1983). Discrete sequential boundaries for clinical trials. Biometrika 70, 659-663.</li>
+    <li>Hart, J. F. et al. (1968). Computer Approximations. Wiley. With West, G. (2005). Better approximations to cumulative normal functions. Wilmott Magazine, 70-76.</li>
+    <li>Acklam, P. J. (2003). An algorithm for computing the inverse normal cumulative distribution function (published online).</li>
+    <li>Lanczos, C. (1964). A precision approximation of the gamma function. SIAM Journal on Numerical Analysis B1, 86-96.</li>
+    <li>Press, W. H., Teukolsky, S. A., Vetterling, W. T. and Flannery, B. P. (2007). Numerical Recipes, 3rd ed. Cambridge University Press. Incomplete beta and gamma functions, the modified Lentz method.</li>
+    <li>R Core Team. R: A Language and Environment for Statistical Computing. Functions pnorm, qnorm, pt, qt, pchisq, power.prop.test, power.t.test (reference values).</li>
+    <li>WAI-ARIA Authoring Practices Guide: Tabs pattern (W3C).</li>
+  </ul>
+  <p><button type="button" id="ec-guide-start-bottom" class="ec-guide-start ec-primary">Start planning</button></p>
+</section>
+
+<!-- ======================================================================= Plan -->
+<section id="ec-panel-plan" role="tabpanel" aria-labelledby="ec-tab-plan">
+  <h2 id="ec-plan-heading">Plan</h2>
+  <div class="ec-cols">
+    <div class="ec-inputs" id="ec-plan-inputs">
+      <button type="button" id="ec-plan-errors-jump" class="ec-jump" hidden>Show errors (0)</button>
+
+      <div class="ec-field">
+        <label for="ec-plan-name">Experiment name</label>
+        <input type="text" id="ec-plan-name" maxlength="80" autocomplete="off" aria-describedby="ec-plan-name-hint ec-plan-name-err">
+        <p id="ec-plan-name-hint" class="ec-hint">Used in the documents and file names.</p>
+        <p id="ec-plan-name-err" class="ec-err" hidden></p>
+      </div>
+      <div class="ec-field">
+        <label for="ec-plan-metric-name">Primary metric name</label>
+        <input type="text" id="ec-plan-metric-name" maxlength="80" autocomplete="off" aria-describedby="ec-plan-metric-name-hint ec-plan-metric-name-err">
+        <p id="ec-plan-metric-name-hint" class="ec-hint">The one metric the decision rests on.</p>
+        <p id="ec-plan-metric-name-err" class="ec-err" hidden></p>
+      </div>
+
+      <fieldset class="ec-radios">
+        <legend>Metric type</legend>
+        <div class="ec-radio"><input type="radio" id="ec-plan-type-binary" name="ec-plan-type" value="binary"><label for="ec-plan-type-binary">Conversion (yes/no)</label></div>
+        <div class="ec-radio"><input type="radio" id="ec-plan-type-continuous" name="ec-plan-type" value="continuous"><label for="ec-plan-type-continuous">Average value (mean)</label></div>
+      </fieldset>
+      <fieldset class="ec-radios">
+        <legend>Better when the metric goes</legend>
+        <div class="ec-radio"><input type="radio" id="ec-plan-dir-increase" name="ec-plan-dir" value="increase"><label for="ec-plan-dir-increase">Up</label></div>
+        <div class="ec-radio"><input type="radio" id="ec-plan-dir-decrease" name="ec-plan-dir" value="decrease"><label for="ec-plan-dir-decrease">Down</label></div>
+      </fieldset>
+
+      <div class="ec-field ec-only-binary" id="ec-plan-baseline-rate-wrap">
+        <label for="ec-plan-baseline-rate">Baseline conversion rate (%)</label>
+        <input type="text" inputmode="decimal" id="ec-plan-baseline-rate" maxlength="32" autocomplete="off" aria-describedby="ec-plan-baseline-rate-hint ec-plan-baseline-rate-err">
+        <p id="ec-plan-baseline-rate-hint" class="ec-hint">For example 10 for 10%.</p>
+        <p id="ec-plan-baseline-rate-err" class="ec-err" hidden></p>
+      </div>
+      <div class="ec-field ec-only-continuous" id="ec-plan-baseline-mean-wrap" hidden>
+        <label for="ec-plan-baseline-mean">Baseline mean</label>
+        <input type="text" inputmode="decimal" id="ec-plan-baseline-mean" maxlength="32" autocomplete="off" aria-describedby="ec-plan-baseline-mean-hint ec-plan-baseline-mean-err">
+        <p id="ec-plan-baseline-mean-hint" class="ec-hint">The average value per user today.</p>
+        <p id="ec-plan-baseline-mean-err" class="ec-err" hidden></p>
+      </div>
+      <div class="ec-field ec-only-continuous" id="ec-plan-baseline-sd-wrap" hidden>
+        <label for="ec-plan-baseline-sd">Standard deviation</label>
+        <input type="text" inputmode="decimal" id="ec-plan-baseline-sd" maxlength="32" autocomplete="off" aria-describedby="ec-plan-baseline-sd-hint ec-plan-baseline-sd-err">
+        <p id="ec-plan-baseline-sd-hint" class="ec-hint">Of the metric per user, from historical data.</p>
+        <p id="ec-plan-baseline-sd-err" class="ec-err" hidden></p>
+      </div>
+
+      <fieldset class="ec-radios">
+        <legend>MDE is</legend>
+        <div class="ec-radio"><input type="radio" id="ec-plan-mde-type-relative" name="ec-plan-mde-type" value="relative"><label for="ec-plan-mde-type-relative">Relative (% of baseline)</label></div>
+        <div class="ec-radio"><input type="radio" id="ec-plan-mde-type-absolute" name="ec-plan-mde-type" value="absolute"><label for="ec-plan-mde-type-absolute">Absolute (pp for rates, metric units for means)</label></div>
+      </fieldset>
+
+      <div class="ec-field">
+        <label for="ec-plan-mde">Minimum detectable effect</label>
+        <input type="text" inputmode="decimal" id="ec-plan-mde" maxlength="32" autocomplete="off" aria-describedby="ec-plan-mde-hint ec-plan-mde-err">
+        <p id="ec-plan-mde-hint" class="ec-hint">Percent of the baseline.</p>
+        <p id="ec-plan-mde-err" class="ec-err" hidden></p>
+      </div>
+      <div class="ec-field">
+        <label for="ec-plan-alpha">Significance level alpha (%)</label>
+        <input type="text" inputmode="decimal" id="ec-plan-alpha" maxlength="32" autocomplete="off" aria-describedby="ec-plan-alpha-hint ec-plan-alpha-err">
+        <p id="ec-plan-alpha-hint" class="ec-hint">The accepted false-positive rate; 5 is common.</p>
+        <p id="ec-plan-alpha-err" class="ec-err" hidden></p>
+      </div>
+      <div class="ec-field">
+        <label for="ec-plan-power">Power (%)</label>
+        <input type="text" inputmode="decimal" id="ec-plan-power" maxlength="32" autocomplete="off" aria-describedby="ec-plan-power-hint ec-plan-power-err">
+        <p id="ec-plan-power-hint" class="ec-hint">The chance to detect an effect as large as the MDE; 80 is common.</p>
+        <p id="ec-plan-power-err" class="ec-err" hidden></p>
+      </div>
+
+      <fieldset class="ec-radios">
+        <legend>Test</legend>
+        <div class="ec-radio"><input type="radio" id="ec-plan-sides-two" name="ec-plan-sides" value="two"><label for="ec-plan-sides-two">Two-sided</label></div>
+        <div class="ec-radio"><input type="radio" id="ec-plan-sides-one" name="ec-plan-sides" value="one"><label for="ec-plan-sides-one">One-sided (in the "better" direction)</label></div>
+      </fieldset>
+
+      <div class="ec-field">
+        <label for="ec-plan-share">Treatment share of traffic (%)</label>
+        <input type="text" inputmode="decimal" id="ec-plan-share" maxlength="32" autocomplete="off" aria-describedby="ec-plan-share-hint ec-plan-share-err">
+        <p id="ec-plan-share-hint" class="ec-hint">50 for an even split.</p>
+        <p id="ec-plan-share-err" class="ec-err" hidden></p>
+      </div>
+      <div class="ec-field">
+        <label for="ec-plan-daily">Users entering the experiment per day (both arms)</label>
+        <input type="text" inputmode="numeric" id="ec-plan-daily" maxlength="32" autocomplete="off" aria-describedby="ec-plan-daily-hint ec-plan-daily-err">
+        <p id="ec-plan-daily-hint" class="ec-hint">New eligible users per day, counted once.</p>
+        <p id="ec-plan-daily-err" class="ec-err" hidden></p>
+      </div>
+      <div class="ec-field">
+        <label for="ec-plan-start">Start date (optional)</label>
+        <input type="date" id="ec-plan-start" maxlength="10" aria-describedby="ec-plan-start-hint ec-plan-start-err">
+        <p id="ec-plan-start-hint" class="ec-hint">The first day of data.</p>
+        <p id="ec-plan-start-err" class="ec-err" hidden></p>
+      </div>
+      <div class="ec-field">
+        <label for="ec-plan-hypothesis">Hypothesis</label>
+        <textarea id="ec-plan-hypothesis" rows="3" maxlength="600" aria-describedby="ec-plan-hypothesis-hint ec-plan-hypothesis-err"></textarea>
+        <p id="ec-plan-hypothesis-hint" class="ec-hint">What you change, what you expect to happen and why.</p>
+        <p id="ec-plan-hypothesis-err" class="ec-err" hidden></p>
+      </div>
+      <div class="ec-field">
+        <label for="ec-plan-notes">Notes (optional)</label>
+        <textarea id="ec-plan-notes" rows="2" maxlength="600" aria-describedby="ec-plan-notes-hint ec-plan-notes-err"></textarea>
+        <p id="ec-plan-notes-hint" class="ec-hint">Anything else reviewers should know.</p>
+        <p id="ec-plan-notes-err" class="ec-err" hidden></p>
+      </div>
+
+      <h3 id="ec-plan-guardrails-heading">Guardrail metrics</h3>
+      <div id="ec-plan-guardrails"></div>
+      <p><button type="button" id="ec-plan-guardrail-add">Add guardrail</button></p>
+    </div>
+
+    <div class="ec-results" id="ec-plan-results" aria-live="off">
+      <div id="ec-plan-summary-errors" class="ec-summary" tabindex="-1" hidden>
+        <h3 id="ec-plan-summary-title">Fix 0 field(s) to see the plan.</h3>
+        <ul id="ec-plan-summary-list"></ul>
+      </div>
+      <p id="ec-plan-infeasible" class="ec-notice" hidden>This MDE is too small to detect with any realistic sample. Increase the MDE.</p>
+      <div id="ec-plan-output">
+        <h3 id="ec-plan-figures-heading">Key figures</h3>
+        <dl class="ec-figures">
+          <dt>Control users</dt><dd id="ec-out-n-control"></dd>
+          <dt>Treatment users</dt><dd id="ec-out-n-treatment"></dd>
+          <dt>Total users</dt><dd id="ec-out-n-total"></dd>
+          <dt>Target treatment value</dt><dd id="ec-out-target"></dd>
+          <dt>Days of traffic needed</dt><dd id="ec-out-days-raw"></dd>
+          <dt>Recommended duration</dt><dd id="ec-out-days-rec"></dd>
+          <dt>Planned end (last day of data)</dt><dd id="ec-out-end"></dd>
+        </dl>
+        <div id="ec-out-advice"></div>
+
+        <h3 id="ec-sens-heading">What can this test detect?</h3>
+        <div class="ec-scroll">
+          <table id="ec-sens-table">
+            <caption>Detectable effect by test duration</caption>
+            <thead><tr><th scope="col">Duration</th><th scope="col">Users per arm (control / treatment)</th><th scope="col">Detectable MDE (absolute)</th><th scope="col">Detectable MDE (relative)</th></tr></thead>
+            <tbody id="ec-sens-body"></tbody>
+          </table>
+        </div>
+        <svg id="ec-sens-chart" viewBox="0 0 640 300" width="100%" role="img" aria-labelledby="ec-sens-title ec-sens-desc"><title id="ec-sens-title">Detectable effect by test duration</title><desc id="ec-sens-desc"></desc></svg>
+        <p class="ec-hint" id="ec-sens-note">Sample sizes use a normal approximation; about 1-2 users per arm fewer than an exact t-based calculation at small n for means.</p>
+
+        <h3 id="ec-prereg-heading">Pre-registration</h3>
+        <label for="ec-prereg-md">Pre-registration (Markdown)</label>
+        <textarea id="ec-prereg-md" rows="14" readonly></textarea>
+        <p class="ec-buttons"><button type="button" id="ec-prereg-copy">Copy Markdown</button> <button type="button" id="ec-prereg-download">Download .md</button></p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ======================================================================= Readout -->
+<section id="ec-panel-readout" role="tabpanel" aria-labelledby="ec-tab-readout" hidden>
+  <h2 id="ec-ro-heading">Readout</h2>
+  <div id="ec-ro-plan-invalid" class="ec-notice" hidden>
+    <p id="ec-ro-plan-invalid-msg">Complete the plan first: the readout needs the MDE, alpha and split from it.</p>
+    <p><button type="button" id="ec-ro-goto-plan">Go to Plan</button></p>
+  </div>
+  <div id="ec-ro-body">
+    <div id="ec-ro-plan-summary" class="ec-plan-summary">
+      <p id="ec-ro-plan-text"></p>
+      <p><button type="button" id="ec-ro-edit-plan">Edit plan</button></p>
+    </div>
+    <div class="ec-cols">
+      <div class="ec-inputs" id="ec-ro-inputs">
+        <button type="button" id="ec-ro-errors-jump" class="ec-jump" hidden>Show errors (0)</button>
+        <h3 id="ec-ro-primary-heading">Primary metric</h3>
+        <div class="ec-arms">
+          <fieldset class="ec-arm">
+            <legend>Control</legend>
+            <div class="ec-field">
+              <label for="ec-ro-c-n" id="ec-ro-c-n-label">Control users</label>
+              <input type="text" inputmode="numeric" id="ec-ro-c-n" maxlength="32" autocomplete="off" aria-describedby="ec-ro-c-n-err">
+              <p id="ec-ro-c-n-err" class="ec-err" hidden></p>
+            </div>
+            <div class="ec-field ec-only-binary">
+              <label for="ec-ro-c-x">Control conversions</label>
+              <input type="text" inputmode="numeric" id="ec-ro-c-x" maxlength="32" autocomplete="off" aria-describedby="ec-ro-c-x-err">
+              <p id="ec-ro-c-x-err" class="ec-err" hidden></p>
+            </div>
+            <div class="ec-field ec-only-continuous" hidden>
+              <label for="ec-ro-c-mean">Control mean</label>
+              <input type="text" inputmode="decimal" id="ec-ro-c-mean" maxlength="32" autocomplete="off" aria-describedby="ec-ro-c-mean-err">
+              <p id="ec-ro-c-mean-err" class="ec-err" hidden></p>
+            </div>
+            <div class="ec-field ec-only-continuous" hidden>
+              <label for="ec-ro-c-sd">Control standard deviation</label>
+              <input type="text" inputmode="decimal" id="ec-ro-c-sd" maxlength="32" autocomplete="off" aria-describedby="ec-ro-c-sd-err">
+              <p id="ec-ro-c-sd-err" class="ec-err" hidden></p>
+            </div>
+          </fieldset>
+          <fieldset class="ec-arm">
+            <legend>Treatment</legend>
+            <div class="ec-field">
+              <label for="ec-ro-t-n" id="ec-ro-t-n-label">Treatment users</label>
+              <input type="text" inputmode="numeric" id="ec-ro-t-n" maxlength="32" autocomplete="off" aria-describedby="ec-ro-t-n-err">
+              <p id="ec-ro-t-n-err" class="ec-err" hidden></p>
+            </div>
+            <div class="ec-field ec-only-binary">
+              <label for="ec-ro-t-x">Treatment conversions</label>
+              <input type="text" inputmode="numeric" id="ec-ro-t-x" maxlength="32" autocomplete="off" aria-describedby="ec-ro-t-x-err">
+              <p id="ec-ro-t-x-err" class="ec-err" hidden></p>
+            </div>
+            <div class="ec-field ec-only-continuous" hidden>
+              <label for="ec-ro-t-mean">Treatment mean</label>
+              <input type="text" inputmode="decimal" id="ec-ro-t-mean" maxlength="32" autocomplete="off" aria-describedby="ec-ro-t-mean-err">
+              <p id="ec-ro-t-mean-err" class="ec-err" hidden></p>
+            </div>
+            <div class="ec-field ec-only-continuous" hidden>
+              <label for="ec-ro-t-sd">Treatment standard deviation</label>
+              <input type="text" inputmode="decimal" id="ec-ro-t-sd" maxlength="32" autocomplete="off" aria-describedby="ec-ro-t-sd-err">
+              <p id="ec-ro-t-sd-err" class="ec-err" hidden></p>
+            </div>
+          </fieldset>
+        </div>
+        <div class="ec-field">
+          <label for="ec-ro-through">Data through (last day included)</label>
+          <input type="date" id="ec-ro-through" maxlength="10" aria-describedby="ec-ro-through-hint ec-ro-through-err">
+          <p id="ec-ro-through-hint" class="ec-hint">Used to check for early analysis and whole weeks.</p>
+          <p id="ec-ro-through-err" class="ec-err" hidden></p>
+        </div>
+        <div class="ec-field">
+          <label for="ec-ro-looks">How many times have results been looked at (including now)?</label>
+          <input type="text" inputmode="numeric" id="ec-ro-looks" maxlength="32" autocomplete="off" aria-describedby="ec-ro-looks-hint ec-ro-looks-err">
+          <p id="ec-ro-looks-hint" class="ec-hint">Every look at the results counts, including this one.</p>
+          <p id="ec-ro-looks-err" class="ec-err" hidden></p>
+        </div>
+        <details id="ec-ro-advanced">
+          <summary>Advanced</summary>
+          <div class="ec-field">
+            <label for="ec-ro-srm-threshold">SRM alert threshold (p-value)</label>
+            <input type="text" inputmode="decimal" id="ec-ro-srm-threshold" maxlength="32" autocomplete="off" aria-describedby="ec-ro-srm-threshold-hint ec-ro-srm-threshold-err">
+            <p id="ec-ro-srm-threshold-hint" class="ec-hint">A strict threshold such as 0.001 is a common convention.</p>
+            <p id="ec-ro-srm-threshold-err" class="ec-err" hidden></p>
+          </div>
+        </details>
+        <h3 id="ec-ro-guardrails-heading">Guardrail results</h3>
+        <div id="ec-ro-guardrails"></div>
+      </div>
+
+      <div class="ec-results" id="ec-ro-results" aria-live="off">
+        <div id="ec-ro-summary-errors" class="ec-summary" tabindex="-1">
+          <h3 id="ec-ro-summary-title">Enter your observed numbers to audit the result.</h3>
+          <ul id="ec-ro-summary-list"></ul>
+        </div>
+        <section id="ec-verdict" data-verdict="none" aria-labelledby="ec-verdict-title">
+          <h2 id="ec-verdict-title"><span id="ec-verdict-badge" class="ec-badge"></span> <span id="ec-verdict-label">No verdict yet</span></h2>
+          <p id="ec-verdict-summary"></p>
+          <p id="ec-verdict-next"></p>
+          <ul id="ec-verdict-reasons"></ul>
+        </section>
+        <div id="ec-ro-details" hidden>
+          <div class="ec-scroll">
+            <table id="ec-effect-table">
+              <caption>Primary metric</caption>
+              <thead><tr id="ec-effect-head"></tr></thead>
+              <tbody id="ec-effect-body"></tbody>
+            </table>
+          </div>
+          <dl class="ec-figures">
+            <dt>Absolute difference</dt><dd id="ec-out-diff"></dd>
+            <dt>Relative lift</dt><dd id="ec-out-rel"></dd>
+            <dt>Test</dt><dd id="ec-out-test"></dd>
+            <dt>MDE comparison</dt><dd id="ec-out-mde"></dd>
+          </dl>
+          <div class="ec-scroll">
+            <table id="ec-checks">
+              <caption>Checks</caption>
+              <thead><tr><th scope="col">Check</th><th scope="col">Result</th><th scope="col">Detail</th></tr></thead>
+              <tbody id="ec-checks-body"></tbody>
+            </table>
+          </div>
+        </div>
+        <section id="ec-memo-section" aria-labelledby="ec-memo-heading">
+          <h3 id="ec-memo-heading">Decision memo</h3>
+          <p class="ec-buttons"><button type="button" id="ec-memo-copy">Copy Markdown</button> <button type="button" id="ec-memo-download">Download .md</button> <button type="button" id="ec-memo-print">Print / save as PDF</button></p>
+          <p id="ec-memo-empty">The memo appears once the plan and the readout are complete.</p>
+          <article id="ec-memo-preview"></article>
+          <details id="ec-memo-source">
+            <summary>Markdown source</summary>
+            <label for="ec-memo-md">Decision memo (Markdown)</label>
+            <textarea id="ec-memo-md" rows="16" readonly></textarea>
+          </details>
+        </section>
+      </div>
+    </div>
+  </div>
+</section>
+</main>
+
+<footer id="ec-footer">
+  <p>ExperimentCheck 1.0.0 - MIT licence - no data leaves your browser.</p>
+  <div class="ec-share">
+    <label for="ec-share-url">Share link</label>
+    <input type="text" id="ec-share-url" readonly>
+    <button type="button" id="ec-share-copy">Copy link</button>
+  </div>
+</footer>
+</body>
+</html>

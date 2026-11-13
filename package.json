@@ -1,0 +1,14 @@
+{
+  "name": "experiment-check",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Plan, pre-register and audit A/B tests in the browser.",
+  "license": "MIT",
+  "type": "commonjs",
+  "scripts": {
+    "test": "node --test \"test/**/*.test.cjs\"",
+    "smoke": "node scripts/ui-smoke.cjs",
+    "screenshots": "node scripts/capture-screenshots.cjs",
+    "package": "node scripts/package-public.cjs --require-local"
+  }
+}
