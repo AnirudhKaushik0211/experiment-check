@@ -8,7 +8,7 @@ Plan, pre-register and audit A/B tests in your browser. No sign-up, no install, 
 
 ## Live demo
 
-Live demo: add the GitHub Pages link here after publishing.
+Live demo: https://anirudhkaushik0211.github.io/experiment-check/
 
 ## Contents
 
